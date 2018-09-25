@@ -1,0 +1,96 @@
+#! /usr/local/bin/perl -wT
+
+use strict;
+use Getopt::Long;
+use vars qw($opt_V $opt_h $opt_w $opt_c $opt_F $opt_S $opt_s $PROGNAME);
+use lib "/usr/local/libexec/nagios" ;
+use utils qw(%ERRORS &print_revision &support &usage);
+
+$PROGNAME = "check_mailspool";
+
+sub print_help ();
+sub print_usage ();
+
+$ENV{'PATH'}='';
+$ENV{'BASH_ENV'}=''; 
+$ENV{'ENV'}='';
+
+Getopt::Long::Configure('bundling');
+GetOptions
+	("V"   => \$opt_V, "version"    => \$opt_V,
+	 "h"   => \$opt_h, "help"       => \$opt_h,
+	 "w=s" => \$opt_w, "warning=s"  => \$opt_w,
+	 "c=s" => \$opt_c, "critical=s" => \$opt_c,
+	 "s=s" => \$opt_s, "spool=s" => \$opt_s,
+	 "F=s" => \$opt_F, "from=s" => \$opt_F,
+	 "S=s" => \$opt_S, "subject=s" => \$opt_S);
+
+if ($opt_V) {
+	print_revision($PROGNAME,'$Revision: 1.0 $');
+	exit $ERRORS{'OK'};
+}
+
+if ($opt_h) {print_help(); exit $ERRORS{'OK'};}
+
+($opt_w) || usage("Warning threshold not specified\n");
+my $warning = $1 if ($opt_w =~ /([0-9]{1,2}|100)+/);
+($warning) || usage("Invalid warning threshold: $opt_w\n");
+
+($opt_c) || usage("Critical threshold not specified\n");
+my $critical = $1 if ($opt_c =~ /([0-9]{1,2}|100)/);
+($critical) || usage("Invalid critical threshold: $opt_c\n");
+
+(($opt_S) || ($opt_F)) || usage ("Subject or Sender address not specified\n");
+
+my ($search,$header);
+if ($opt_F) {
+	$header = 'From ';
+	$search = $1 if ($opt_F =~ /([@\-.A-Za-z0-9]+)/);
+}
+if ($opt_S) {
+	$header = 'Subject: ';
+	$search = $1 if ($opt_S =~ /([@\-.A-Za-z0-9]+)/);
+}
+
+($opt_s) || usage ("Spool file not specified\n");
+my $spool = $1 if ($opt_s =~ /([\/\-.A-Za-z0-9]+)/);
+
+
+my $sig=0;
+$sig = `/usr/bin/grep ^"$header" $spool |/usr/bin/grep -i $search |/usr/bin/wc -l |/usr/bin/sed -e 's/^\ *//' `;
+my $commandline = "/usr/bin/grep ^'From ' $spool |/usr/bin/grep -i $search |/usr/bin/wc -l |/usr/bin/sed -e 's/^\ *//' ";
+
+print "Number of emails in spool: $sig\n";
+
+exit $ERRORS{'CRITICAL'} if ($sig>$critical);
+exit $ERRORS{'WARNING'} if ($sig>$warning);
+exit $ERRORS{'OK'};
+
+
+sub print_usage () {
+	print "Usage: $PROGNAME -S <senderaddress> -s <spoolfile> -w <warn> -c <crit>\n";
+}
+
+sub print_help () {
+	print_revision($PROGNAME,'$Revision: 1.0 $');
+	print "Copyright (c) 2007 Christopher Klewin
+
+This plugin reports the number of emails in the mailspool for a user from a specified sender address or subject.
+
+";
+	print_usage();
+	print "
+-S, --subject=STRING
+   Subject of email
+-F, --from=EMAILADDRESS
+   Sender's address (ex. foo\@bar.com)
+-s, --spool=PATH
+   Full path to the spool file (ex. /var/mail/foo)
+-w, --warning=INTEGER
+   Percentage strength below which a WARNING status will result
+-c, --critical=INTEGER
+   Percentage strength below which a CRITICAL status will result
+
+";
+	support();
+}
